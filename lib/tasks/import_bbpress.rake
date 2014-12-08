@@ -264,10 +264,12 @@ end
 
 def create_users
   @bbpress_users.each do |bbpress_user|
-    dc_username = bbpress_username_to_dc(bbpress_user['user_nicename'])
+    #in our version of bbpress, user_nicename is not actually a nice name. setting username to a trimmed display_name
+    dc_username = bbpress_username_to_dc(bbpress_user['display_name'])
     if(dc_username.length < 3)
       dc_username = dc_username.ljust(3, '0')
     end
+    # 
     dc_email = bbpress_user['user_email']
     # create email address
     if dc_email.nil? or dc_email.empty? or dc_email.include? "mailinator.com" then
