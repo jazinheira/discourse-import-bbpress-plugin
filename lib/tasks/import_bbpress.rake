@@ -269,7 +269,6 @@ def create_users
     if(dc_username.length < 3)
       dc_username = dc_username.ljust(3, '0')
     end
-    # 
     dc_email = bbpress_user['user_email']
     # create email address
     if dc_email.nil? or dc_email.empty? or dc_email.include? "mailinator.com" then
@@ -283,6 +282,10 @@ def create_users
     admin = false
 
     # Create user if it doesn't exist
+    if User.where('email = ?', dc_email).empty? == false then
+      puts "User (#{bbpress_user['id']}) #{bbpress_user['user_login']} (#{dc_username} / #{dc_email}) found. Email match found".yellow
+      next
+    end
     if User.where('username = ?', dc_username).empty? then
       begin
         dc_user = User.create!(
