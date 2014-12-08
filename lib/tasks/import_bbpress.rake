@@ -118,9 +118,9 @@ def sql_fetch_posts(*parse)
   loop do
     query =<<EOQ
       SELECT p.id AS topic_id, u.user_login, f.post_title AS forum_name, p.post_date AS post_time, p.post_title AS topic_title, p.post_content AS post_text, p.post_type, p.post_parent
-      FROM wp_posts p
-      INNER JOIN wp_users u on u.id = p.post_author
-      LEFT JOIN (SELECT id, post_title FROM wp_posts WHERE post_type = 'forum') AS f on f.id = p.post_parent
+      FROM pw8_posts p
+      INNER JOIN pw8_users u on u.id = p.post_author
+      LEFT JOIN (SELECT id, post_title FROM pw8_posts WHERE post_type = 'forum') AS f on f.id = p.post_parent
       WHERE post_type IN ('topic', 'reply')
       ORDER BY p.id ASC, p.post_title ASC
       LIMIT #{@offset.to_s}, 500;
@@ -317,7 +317,7 @@ def sql_fetch_users
     count = 0
     query = <<EOQ
       SELECT id, user_login, user_pass, user_nicename, user_email, user_url, user_registered, user_status, display_name
-      FROM wp_users
+      FROM pw8_users
       LIMIT #{offset}, 50;
 EOQ
 
