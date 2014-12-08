@@ -269,8 +269,9 @@ def create_users
     if(dc_username.length < 3)
       dc_username = dc_username.ljust(3, '0')
     end
-    dc_email = bbpress_user['user_email']
+
     # create email address
+    dc_email = bbpress_user['user_email']
     if dc_email.nil? or dc_email.empty? or dc_email.include? "mailinator.com" then
       dc_email = dc_username + "@has.no.email"
     end
@@ -284,6 +285,16 @@ def create_users
     # Create user if it doesn't exist
     if User.where('email = ?', dc_email).empty? == false then
       puts "User (#{bbpress_user['id']}) #{bbpress_user['user_login']} (#{dc_username} / #{dc_email}) found. Email match found".yellow
+      #Now we'll update the username to match. Just in case.
+      begin
+        User.update(username: dc_username)
+      rescue Exception => e
+        puts "Error #{e} on user #{dc_username} <#{dc_email}>. Could not update username."
+        puts "---"
+        puts e.inspect
+        puts e.backtrace
+        abort
+      end
       next
     end
     if User.where('username = ?', dc_username).empty? then
