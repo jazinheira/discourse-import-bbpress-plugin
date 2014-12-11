@@ -117,7 +117,7 @@ def sql_fetch_posts(*parse)
 
   loop do
     query =<<EOQ
-      SELECT p.id AS topic_id, u.user_login, f.post_title AS forum_name, p.post_date AS post_time, p.post_title AS topic_title, p.post_content AS post_text, p.post_type, p.post_parent, u.user_email
+      SELECT p.id AS topic_id, u.user_login, f.post_title AS forum_name, p.post_date AS post_time, p.post_title AS topic_title, p.post_content AS post_text, p.post_type, p.post_parent, u.user_email, u.display_name
       FROM pw8_posts p
       INNER JOIN pw8_users u on u.id = p.post_author
       LEFT JOIN (SELECT id, post_title FROM pw8_posts WHERE post_type = 'forum') AS f on f.id = p.post_parent
@@ -163,14 +163,11 @@ def sql_import_posts
 
 
     # get the discourse user of this post
-    dc_username = dc_get_username_from_email_for_post(user['user_email'])
+    dc_username = dc_get_username_from_email_for_post(user['user_email'], user['display_name'])
       #skip this post if a username was not found
     if dc_username == "SKIP_THIS_POST_IT_IS_NOT_GOOD"
       puts "Skipping post #{bbpress_post['topic_title']} corresponding user could not be found".red
       next
-    end
-    if(dc_username.length < 3)
-      dc_username = dc_username.ljust(3, '0')
     end
 
     puts "dc_username is #{dc_username}".green
@@ -246,7 +243,7 @@ def sql_import_posts
 
     # Everything set, save the topic
     if post_creator.errors.present? # Skip if not valid for some reason
-      puts "\nContents of topic from post #{bbpress_post['post_id']} failed to ".red+
+      puts "\nContents of topic from post #{bbpress_post['post_id']} failed to ".red
         "import: #{post_creator.errors.full_messages}".red
     else
       post_serializer = PostSerializer.new(post, scope: true, root: false)
@@ -261,7 +258,7 @@ end
 
 
 # Returns discourse username from email
-def dc_get_username_from_email_for_post(email)
+def dc_get_username_from_email_for_post(email, display_name)
   puts "Searching for user with email #{email}".yellow
   c_user = User.where('email = ?', email).first
 begin  
@@ -276,8 +273,19 @@ begin
     end
   end
 rescue Exception => e
- puts "ERROR with this post. User's email is #{email}. SKIPPING".red
- return "SKIP_THIS_POST_IT_IS_NOT_GOOD"
+ # turns out that this must have been a user who's display_name matched another user. we'll throw the post in with whatever that is
+    c_username = display_name
+     # make username nicer
+    if c_username.nil? then
+      c_username == email
+      c_username = c_username.delete('@').delete('-').delete('.').downcase
+    end  
+    if(c_username.length < 3)
+       c_username = c_username.ljust(3, '0') + email
+       c_username = c_username.delete('@').delete('-').delete('.').downcase
+    end
+ puts "Reticulating splines from display_name. Username should be #{c_username}".yellow
+
 end
   puts "Found user #{c_username}".yellow
   return c_username
