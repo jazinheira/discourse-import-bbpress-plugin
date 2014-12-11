@@ -117,7 +117,7 @@ def sql_fetch_posts(*parse)
 
   loop do
     query =<<EOQ
-      SELECT p.id AS topic_id, u.user_login, f.post_title AS forum_name, p.post_date AS post_time, p.post_title AS topic_title, p.post_content AS post_text, p.post_type, p.post_parent
+      SELECT p.id AS topic_id, u.user_login, f.post_title AS forum_name, p.post_date AS post_time, p.post_title AS topic_title, p.post_content AS post_text, p.post_type, p.post_parent, u.user_email
       FROM pw8_posts p
       INNER JOIN pw8_users u on u.id = p.post_author
       LEFT JOIN (SELECT id, post_title FROM pw8_posts WHERE post_type = 'forum') AS f on f.id = p.post_parent
@@ -161,12 +161,19 @@ def sql_import_posts
       puts "Warning: User (#{bbpress_post['id']}) #{bbpress_post['user_login']} not found in user list!".red
     end
 
+
     # get the discourse user of this post
-    dc_username = bbpress_username_to_dc(bbpress_post['user_login'])
+    dc_username = dc_get_username_from_email_for_post(user['user_email'])
+      #skip this post if a username was not found
+    if dc_username == "SKIP_THIS_POST_IT_IS_NOT_GOOD"
+      puts "Skipping post #{bbpress_post['topic_title']} corresponding user could not be found".red
+      next
+    end
     if(dc_username.length < 3)
       dc_username = dc_username.ljust(3, '0')
     end
 
+    puts "dc_username is #{dc_username}".green
     dc_user = dc_get_user(dc_username)
 
     topic_title = sanitize_topic bbpress_post['topic_title']
@@ -243,7 +250,7 @@ def sql_import_posts
         "import: #{post_creator.errors.full_messages}".red
     else
       post_serializer = PostSerializer.new(post, scope: true, root: false)
-      post_serializer.topic_slug = post.topic.slug if post.topic.present?
+#      post_serializer.topic_slug = post.topic.slug if post.topic.present?
       post_serializer.draft_sequence = DraftSequence.current(dc_user, post.topic.draft_key)
       # save id to hash
       topics[bbpress_post['topic_id']] = post.topic.id if is_new_topic
@@ -252,6 +259,46 @@ def sql_import_posts
   end
 end
 
+
+# Returns discourse username from email
+def dc_get_username_from_email_for_post(email)
+  puts "Searching for user with email #{email}".yellow
+  c_user = User.where('email = ?', email).first
+begin  
+  if c_user.username.nil? then
+    c_username = email.delete('@').delete('-').delete('.').downcase
+  else
+    begin
+     c_username = c_user.username
+    rescue Exception => e
+    puts "Error #{e} on getting username for #{email}".red
+    return "SKIP_THIS_POST_IT_IS_NOT_GOOD"
+    end
+  end
+rescue Exception => e
+ puts "ERROR with this post. User's email is #{email}. SKIPPING".red
+ return "SKIP_THIS_POST_IT_IS_NOT_GOOD"
+end
+  puts "Found user #{c_username}".yellow
+  return c_username
+end
+
+def dc_get_username_from_email(email)
+  puts "Searching for user with email #{email}...".yellow
+  c_user = User.where('email = ?', email).first
+  
+  if c_user.username.nil? then
+    c_username = email.delete('@').delete('-').delete('.').downcase
+    puts "Found nil username setting to #{c_username}".yellow
+    c_username = c_username.slice(0, 20)
+    return c_username
+  end
+  c_username = c_user.username
+  puts "Found user #{c_username}".yellow
+  # username can't be more than 20 chars
+  c_username = c_username.slice(0, 20)
+  return c_username
+end
 # Returns a Discourse category where imported posts will go
 def create_category(name, owner)
   if Category.where('name = ?', name).empty? then
@@ -264,16 +311,29 @@ end
 
 def create_users
   @bbpress_users.each do |bbpress_user|
+
     #in our version of bbpress, user_nicename is not actually a nice name. setting username to a trimmed display_name
     dc_username = bbpress_username_to_dc(bbpress_user['display_name'])
-    if(dc_username.length < 3)
-      dc_username = dc_username.ljust(3, '0')
-    end
 
     # create email address
     dc_email = bbpress_user['user_email']
     if dc_email.nil? or dc_email.empty? or dc_email.include? "mailinator.com" then
       dc_email = dc_username + "@has.no.email"
+    end
+    # if the email is "@has.no.email" then both email address and display_name were null. this legend is now erased. skip this loop.
+    if dc_email == "@has.no.email" then
+      next
+    end
+
+
+    # make username nicer
+    if dc_username.nil? then
+      dc_username == bbpress_user['user_email']
+      dc_username = dc_username.delete('@').delete('-').delete('.').downcase
+    end  
+    if(dc_username.length < 3)
+       dc_username = dc_username.ljust(3, '0') + dc_email
+       dc_username = dc_username.delete('@').delete('-').delete('.').downcase
     end
 
     #approved = bbpress_user['user_status'] == 1
@@ -284,20 +344,17 @@ def create_users
 
     # Create user if it doesn't exist
     if User.where('email = ?', dc_email).empty? == false then
-      puts "User (#{bbpress_user['id']}) #{bbpress_user['user_login']} (#{dc_username} / #{dc_email}) found. Email match found".yellow
-      #Now we'll update the username to match. Just in case.
-      begin
-        User.update(username: dc_username)
-      rescue Exception => e
-        puts "Error #{e} on user #{dc_username} <#{dc_email}>. Could not update username."
-        puts "---"
-        puts e.inspect
-        puts e.backtrace
-        abort
-      end
+
+      puts "User (#{bbpress_user['id']}) #{bbpress_user['user_login']} (#{dc_username} / #{dc_email}) email match found".red
+      
+      dc_username = dc_get_username_from_email(dc_email)
+      puts "User with email #{dc_email}) is already known as #{dc_username}".green
       next
     end
     if User.where('username = ?', dc_username).empty? then
+    #username has to be <= 20 chars
+    dc_username = dc_username.slice(0, 20)
+
       begin
         dc_user = User.create!(
           username: dc_username,
