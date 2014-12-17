@@ -159,6 +159,7 @@ def sql_import_posts
 
     if user.nil?
       puts "Warning: User (#{bbpress_post['id']}) #{bbpress_post['user_login']} not found in user list!".red
+      next
     end
 
 
@@ -179,7 +180,7 @@ def sql_import_posts
 
     topic = topics[bbpress_post['post_parent']]
 
-    if bbpress_post['post_type'] == 'topic'
+    if bbpress_post['post_type'].strip.downcase == 'topic'
       is_new_topic = true
     end
 
@@ -193,7 +194,7 @@ def sql_import_posts
     if is_new_topic
       # create category if it doesn't exist
       category = create_category(
-        bbpress_post['forum_name'].downcase,
+        bbpress_post['forum_name'].strip.downcase,
         DC_ADMIN
       )
 
